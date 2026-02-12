@@ -1,0 +1,101 @@
+using Oxide.Core;
+using Oxide.Core.Plugins;
+using Oxide.Core.Libraries.Covalence;
+using Newtonsoft.Json;
+using System.Collections.Generic;
+
+namespace Oxide.Plugins
+{
+    [Info("KitLogger", "Bombz", "1.2.0")]
+    [Description("Logs all kit redemptions and admin-given kits to a Discord webhook.")]
+    public class KitLogger : CovalencePlugin
+    {
+        private string webhookUrl;
+
+        private class DiscordEmbed
+        {
+            [JsonProperty("title")] public string Title;
+            [JsonProperty("description")] public string Description;
+            [JsonProperty("color")] public int Color;
+        }
+
+        private class DiscordMessage
+        {
+            [JsonProperty("embeds")] public List<DiscordEmbed> Embeds;
+        }
+
+        protected override void LoadDefaultConfig()
+        {
+            Config["WebhookURL"] = "PUT_WEBHOOK_HERE";
+            SaveConfig();
+        }
+
+        private void Init()
+        {
+            webhookUrl = Config["WebhookURL"].ToString();
+
+            if (webhookUrl == "PUT_WEBHOOK_HERE")
+            {
+                PrintWarning("KitLogger: Please set your Discord webhook URL in the config!");
+            }
+        }
+
+        // Called when a player redeems a kit
+        private void OnKitRedeemed(BasePlayer player, string kitName)
+        {
+            if (player == null || string.IsNullOrEmpty(kitName)) return;
+
+            string msg = $"**Player Redeemed Kit**\n" +
+                         $"**Name:** {player.displayName}\n" +
+                         $"**SteamID:** {player.UserIDString}\n" +
+                         $"**Kit:** {kitName}\n" +
+                         $"**Server Time:** {System.DateTime.Now}";
+
+            SendToDiscord("Kit Redeemed", msg, 16766720); // Gold color
+        }
+
+        // Called when an admin gives a kit manually
+        private void OnKitGiven(BasePlayer target, BasePlayer admin, string kitName)
+        {
+            if (target == null || admin == null || string.IsNullOrEmpty(kitName)) return;
+
+            string msg = $"**Admin Gave Kit**\n" +
+                         $"**Admin:** {admin.displayName} ({admin.UserIDString})\n" +
+                         $"**Player:** {target.displayName} ({target.UserIDString})\n" +
+                         $"**Kit:** {kitName}\n" +
+                         $"**Server Time:** {System.DateTime.Now}";
+
+            SendToDiscord("Kit Given", msg, 16733440); // Orange color
+        }
+
+        private void SendToDiscord(string title, string description, int color)
+        {
+            if (string.IsNullOrEmpty(webhookUrl)) return;
+
+            var embed = new DiscordEmbed
+            {
+                Title = title,
+                Description = description,
+                Color = color
+            };
+
+            var message = new DiscordMessage
+            {
+                Embeds = new List<DiscordEmbed> { embed }
+            };
+
+            string json = JsonConvert.SerializeObject(message);
+
+            webrequest.Enqueue(webhookUrl, json, (code, response) =>
+            {
+                if (code != 204 && code != 200)
+                {
+                    PrintWarning($"KitLogger: Discord webhook error: {code} - {response}");
+                }
+            }, this, RequestMethod.POST, new Dictionary<string, string>
+            {
+                ["Content-Type"] = "application/json"
+            });
+        }
+    }
+}
